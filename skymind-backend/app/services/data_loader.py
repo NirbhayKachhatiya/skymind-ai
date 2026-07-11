@@ -11,40 +11,44 @@ from app.schemas.benchmark import BenchmarkPrompt
 class DataIntelligenceService:
     def __init__(self) -> None:
         self.data_dir: str = settings.DATA_DIR
-        self._ensure_mock_data_exists()
 
-    def _ensure_mock_data_exists(self) -> None:
-        os.makedirs(self.data_dir, exist_ok=True)
-        flights_path = os.path.join(self.data_dir, "flights_data.csv")
-        users_path = os.path.join(self.data_dir, "user_data.csv")
-        benchmark_path = os.path.join(self.data_dir, "benchmark_prompts.json")
-
-        if not os.path.exists(flights_path):
-            with open(flights_path, mode="w", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow(["flight_id", "origin", "destination", "departure_time", "arrival_time", "price", "airline", "duration_minutes", "stops", "layover_airports", "season", "travel_date"])
-                writer.writerow(["FL001", "JFK", "LAX", "2026-12-20T08:00:00", "2026-12-20T11:30:00", "450.0", "Delta", "330", "0", "", "Winter-Peak", "2026-12-20"])
-                writer.writerow(["FL002", "JFK", "LHR", "2026-07-15T18:00:00", "2026-07-16T06:30:00", "850.0", "British Airways", "450", "1", "CDG", "Summer-Peak", "2026-07-15"])
-                writer.writerow(["FL003", "LAX", "NRT", "2026-10-05T11:00:00", "2026-10-06T15:00:00", "920.0", "Japan Airlines", "660", "0", "", "Autumn-OffPeak", "2026-10-05"])
-
-        if not os.path.exists(users_path):
-            with open(users_path, mode="w", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow(["user_id", "name", "structured_preferences", "travel_history", "loyalty_programs", "budget_tier"])
-                writer.writerow(["USR-001", "Alex Mercer", '{"preferred_class": "Business", "max_layovers": 0}', "Prefers luxury travel. Traveled to Tokyo last autumn and explicitly requested direct flights only due to tight schedules. Dissatisfied with airline meals on standard carriers.", '{"Delta": "Gold Medallion", "Japan Airlines": "Emerald"}', "Premium"])
-                writer.writerow(["USR-002", "Elena Rostova", '{"preferred_class": "Economy", "max_layovers": 2}', "Backpacker style. Constantly hunting for lowest pricing parameters across Europe. Tolerates long overnight structural layovers if saving exceeds 150 dollars.", '{"Ryanair": "Basic"}', "Budget"])
-
-        if not os.path.exists(benchmark_path):
-            benchmark_data = [
-                {
-                    "prompt_id": "BM-001",
-                    "user_id": "USR-001",
-                    "query_text": "Find me a direct and highly comfortable flight itinerary from JFK to Tokyo area endpoints during winter season.",
-                    "expected_constraints": {"direct_only": True, "premium_tier": True}
-                }
-            ]
-            with open(benchmark_path, mode="w", encoding="utf-8") as f:
-                json.dump(benchmark_data, f, indent=4)
+    def _normalize_key(self, row: Dict[str, Any], target_key: str) -> str:
+        aliases: Dict[str, List[str]] = {
+            "departure_time": ["departure_time", "departure_utc", "dep_time"],
+            "arrival_time": ["arrival_time", "arrival_utc", "arr_time"],
+            "travel_date": ["travel_date", "date"],
+            "travel_history": ["travel_history", "raw_history", "history"],
+            "structured_preferences": ["structured_preferences", "preferences"],
+            "loyalty_programs": ["loyalty_programs", "frequent_flyer", "loyalty"],
+            "budget_tier": ["budget_tier", "price_sensitivity"]
+        }
+        
+        target_lower = target_key.lower()
+        search_terms = aliases.get(target_lower, [target_lower])
+        
+        for k in row.keys():
+            normalized_header = k.lower().replace(" ", "_").replace("-", "_")
+            if normalized_header in search_terms or normalized_header == target_lower:
+                return row[k]
+                
+        if target_key == "travel_date":
+            try:
+                dep_val = self._normalize_key(row, "departure_time")
+                return dep_val.split("T")[0]
+            except KeyError:
+                pass
+                
+        if target_key == "name":
+            return row.get("user_id", "Unknown Traveler")
+            
+        if target_key == "structured_preferences":
+            return json.dumps({
+                "preferred_cabin": row.get("preferred_cabin", ""),
+                "direct_preference": row.get("direct_preference", ""),
+                "max_layover_minutes": row.get("max_layover_minutes", "")
+            })
+            
+        raise KeyError(f"Could not resolve structural column mapping for: '{target_key}' in CSV headers: {list(row.keys())}")
 
     def load_flights(self) -> List[Flight]:
         flights: List[Flight] = []
@@ -52,17 +56,35 @@ class DataIntelligenceService:
         with open(path, mode="r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                layovers = [x.strip() for x in row["layover_airports"].split(",")] if row["layover_airports"] else []
-                dep_time = datetime.fromisoformat(row["departure_time"])
-                arr_time = datetime.fromisoformat(row["arrival_time"])
-                travel_dt = datetime.fromisoformat(row["travel_date"])
+                flight_id = self._normalize_key(row, "flight_id")
+                origin = self._normalize_key(row, "origin")
+                destination = self._normalize_key(row, "destination")
+                dep_str = self._normalize_key(row, "departure_time")
+                arr_str = self._normalize_key(row, "arrival_time")
+                price_str = self._normalize_key(row, "price")
+                airline = self._normalize_key(row, "airline_name")
+                dur_str = self._normalize_key(row, "duration_minutes")
+                stops_str = self._normalize_key(row, "stops")
+                layover_str = self._normalize_key(row, "layover_airports")
+                season = self._normalize_key(row, "season")
+                travel_str = self._normalize_key(row, "travel_date")
+
+                layovers = [x.strip() for x in layover_str.split(",")] if layover_str else []
+                dep_time = datetime.fromisoformat(dep_str.replace("Z", ""))
+                arr_time = datetime.fromisoformat(arr_str.replace("Z", ""))
                 
-                price = float(row["price"])
-                duration = int(row["duration_minutes"])
+                if " " in travel_str:
+                    travel_str = travel_str.split(" ")[0]
+                elif "T" in travel_str:
+                    travel_str = travel_str.split("T")[0]
+                travel_dt = datetime.strptime(travel_str, "%Y-%m-%d")
                 
-                is_holiday = "Peak" in row["season"] or dep_time.month in [7, 8, 12]
+                price = float(price_str)
+                duration = int(dur_str)
+                
+                is_holiday = "Peak" in season or dep_time.month in [7, 8, 12]
                 price_per_min = price / duration if duration > 0 else 0.0
-                route = f"{row['origin']}-{row['destination']}"
+                route = f"{origin}-{destination}"
                 
                 features = FlightFeatures(
                     is_holiday_season=is_holiday,
@@ -72,17 +94,17 @@ class DataIntelligenceService:
                 )
                 
                 flight = Flight(
-                    flight_id=row["flight_id"],
-                    origin=row["origin"],
-                    destination=row["destination"],
+                    flight_id=flight_id,
+                    origin=origin,
+                    destination=destination,
                     departure_time=dep_time,
                     arrival_time=arr_time,
                     price=price,
-                    airline=row["airline"],
+                    airline=airline,
                     duration_minutes=duration,
-                    stops=int(row["stops"]),
+                    stops=int(stops_str),
                     layover_airports=layovers,
-                    season=row["season"],
+                    season=season,
                     travel_date=travel_dt,
                     features=features
                 )
@@ -95,13 +117,20 @@ class DataIntelligenceService:
         with open(path, mode="r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
+                user_id = self._normalize_key(row, "user_id")
+                name = self._normalize_key(row, "name")
+                struct_pref = self._normalize_key(row, "structured_preferences")
+                history = self._normalize_key(row, "travel_history")
+                loyalty = self._normalize_key(row, "loyalty_programs")
+                budget = self._normalize_key(row, "budget_tier")
+
                 user = UserProfile(
-                    user_id=row["user_id"],
-                    name=row["name"],
-                    structured_preferences=json.loads(row["structured_preferences"]),
-                    travel_history=row["travel_history"],
-                    loyalty_programs=json.loads(row["loyalty_programs"]),
-                    budget_tier=row["budget_tier"]
+                    user_id=user_id,
+                    name=name,
+                    structured_preferences=json.loads(struct_pref) if isinstance(struct_pref, str) and struct_pref.startswith("{") else {},
+                    travel_history=history,
+                    loyalty_programs=json.loads(loyalty) if isinstance(loyalty, str) and loyalty.startswith("{") else {"programs": loyalty},
+                    budget_tier=budget
                 )
                 users.append(user)
         return users

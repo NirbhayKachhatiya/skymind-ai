@@ -17,32 +17,29 @@ class PreferenceIntelligenceEngine:
     def build_persona(self, user: UserProfile) -> TravelerPersona:
         history_lower = user.travel_history.lower()
         
-        inferred_loyalty = list(user.loyalty_programs.keys())
+        inferred_loyalty = []
         for carrier in ["delta", "united", "emirates", "lufthansa", "ryanair", "british airways", "japan airlines"]:
-            if carrier in history_lower and carrier.title() not in inferred_loyalty:
+            if carrier in history_lower:
                 inferred_loyalty.append(carrier.title())
 
-        budget_sensitivity = 0.5
-        if user.budget_tier.lower() == "budget" or "lowest pricing" in history_lower or "hunting for" in history_lower:
-            budget_sensitivity = 0.9
-        elif user.budget_tier.lower() == "premium" or "luxury travel" in history_lower:
-            budget_sensitivity = 0.1
+        try:
+            budget_sensitivity = float(user.budget_tier)
+        except ValueError:
+            budget_sensitivity = 0.9 if "high" in user.budget_tier.lower() else 0.3
 
         convenience_priority = 0.5
-        if "direct flights only" in history_lower or "tight schedules" in history_lower:
+        if "direct" in history_lower or "tight schedule" in history_lower:
             convenience_priority = 0.95
-        elif "tolerates long" in history_lower or "overnight structural layovers" in history_lower:
+        elif "layover" in history_lower:
             convenience_priority = 0.2
 
-        max_layovers = int(user.structured_preferences.get("max_layovers", 2))
-        if "direct flights only" in history_lower:
+        max_layovers = 2
+        if "direct" in history_lower:
             max_layovers = 0
 
         hidden_signals = []
-        if "dissatisfied with airline meals" in history_lower:
+        if "catering" in history_lower or "meals" in history_lower:
             hidden_signals.append("In-flight catering optimization target")
-        if "tight schedules" in history_lower:
-            hidden_signals.append("Strict timing constraint enforcement")
 
         persona = TravelerPersona(
             user_id=user.user_id,
@@ -53,7 +50,7 @@ class PreferenceIntelligenceEngine:
             max_layovers_allowed=max_layovers,
             preferred_carriers=inferred_loyalty.copy(),
             hidden_signals=hidden_signals,
-            confidence_score=0.88
+            confidence_score=0.90
         )
         
         self.persona_store[user.user_id] = persona
@@ -63,7 +60,7 @@ class PreferenceIntelligenceEngine:
         vectors = []
         for idx, user in enumerate(users):
             persona = self.build_persona(user)
-            semantic_text = f"Traveler {persona.name} with loyalty to {', '.join(persona.inferred_loyalty)}. Budget sensitivity: {persona.budget_sensitivity}. Convenience rule: {persona.convenience_priority}. Behavioral history: {user.travel_history}"
+            semantic_text = f"Traveler {persona.name}. Budget: {persona.budget_sensitivity}. History: {user.travel_history}"
             vector = self.embedder.embed_query(semantic_text)
             vectors.append(vector)
             self.user_map[idx] = user.user_id
