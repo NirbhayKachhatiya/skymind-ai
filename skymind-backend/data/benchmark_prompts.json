@@ -1,0 +1,11 @@
+[
+    {
+        "prompt_id": "BM-001",
+        "user_id": "USR-001",
+        "query_text": "Find me a direct and highly comfortable flight itinerary from JFK to Tokyo area endpoints during winter season.",
+        "expected_constraints": {
+            "direct_only": true,
+            "premium_tier": true
+        }
+    }
+]

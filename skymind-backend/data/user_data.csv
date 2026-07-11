@@ -1,0 +1,3 @@
+user_id,name,structured_preferences,travel_history,loyalty_programs,budget_tier
+USR-001,Alex Mercer,"{""preferred_class"": ""Business"", ""max_layovers"": 0}",Prefers luxury travel. Traveled to Tokyo last autumn and explicitly requested direct flights only due to tight schedules. Dissatisfied with airline meals on standard carriers.,"{""Delta"": ""Gold Medallion"", ""Japan Airlines"": ""Emerald""}",Premium
+USR-002,Elena Rostova,"{""preferred_class"": ""Economy"", ""max_layovers"": 2}",Backpacker style. Constantly hunting for lowest pricing parameters across Europe. Tolerates long overnight structural layovers if saving exceeds 150 dollars.,"{""Ryanair"": ""Basic""}",Budget

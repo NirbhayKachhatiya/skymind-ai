@@ -1,0 +1,4 @@
+flight_id,origin,destination,departure_time,arrival_time,price,airline,duration_minutes,stops,layover_airports,season,travel_date
+FL001,JFK,LAX,2026-12-20T08:00:00,2026-12-20T11:30:00,450.0,Delta,330,0,,Winter-Peak,2026-12-20
+FL002,JFK,LHR,2026-07-15T18:00:00,2026-07-16T06:30:00,850.0,British Airways,450,1,CDG,Summer-Peak,2026-07-15
+FL003,LAX,NRT,2026-10-05T11:00:00,2026-10-06T15:00:00,920.0,Japan Airlines,660,0,,Autumn-OffPeak,2026-10-05
