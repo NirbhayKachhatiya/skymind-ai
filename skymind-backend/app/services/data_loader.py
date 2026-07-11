@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.schemas.flight import Flight, FlightFeatures
 from app.schemas.user import UserProfile
 from app.schemas.benchmark import BenchmarkPrompt
+from pathlib import Path
 
 class DataIntelligenceService:
     def __init__(self) -> None:
@@ -52,7 +53,13 @@ class DataIntelligenceService:
 
     def load_flights(self) -> List[Flight]:
         flights: List[Flight] = []
-        path = os.path.join(self.data_dir, "flights_data.csv")
+        project_root = Path(__file__).resolve().parent.parent.parent
+        path = project_root / "data" / "flights_data.csv" 
+
+        if not os.path.exists(path):
+            print(f"\n⚠️ File hunting check! Looking at: {os.path.abspath(path)}")
+            path = project_root / "flights_data.csv"
+        
         with open(path, mode="r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -62,7 +69,7 @@ class DataIntelligenceService:
                 dep_str = self._normalize_key(row, "departure_time")
                 arr_str = self._normalize_key(row, "arrival_time")
                 price_str = self._normalize_key(row, "price")
-                airline = self._normalize_key(row, "airline_name")
+                airline = row.get("airline_name") or row.get("airline") or self._normalize_key(row, "airline_name")
                 dur_str = self._normalize_key(row, "duration_minutes")
                 stops_str = self._normalize_key(row, "stops")
                 layover_str = self._normalize_key(row, "layover_airports")
@@ -113,7 +120,12 @@ class DataIntelligenceService:
 
     def load_users(self) -> List[UserProfile]:
         users: List[UserProfile] = []
-        path = os.path.join(self.data_dir, "user_data.csv")
+        project_root = Path(__file__).resolve().parent.parent.parent
+        path = project_root / "data" / "user_data.csv"
+
+        if not os.path.exists(path):
+            path = project_root / "users_data.csv"
+
         with open(path, mode="r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
